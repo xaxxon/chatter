@@ -16,75 +16,77 @@ class LoginProcess
     @user.send "Welcome #{data}"
     return 1;
   end
-  
+
 end
 
 
 class User
   
-  attr_reader :socket
   attr_accessor :send_buffer
+  attr_reader :socket
   
+  def initialize(game, socket)
+    @game = game
+    @socket = socket
+    @input_buffer = ""
+    @name = nil
+    @send_buffer = ""
+    @processes = [LoginProcess.new(@game, self)]
+  end
+    
   def name=(name)
     raise "Cannot change name" if @name != nil
     @name = name
   end
   
+  
   def name
     return @name
   end
+  
   
   def logged_in?
     @name != nil
   end
   
-  def initialize(game, socket)
-    @game = game
-    @socket = socket;
-    @input_buffer = ""
-    @send_buffer = ""
-    @processes = [LoginProcess.new(@game, self)]
-  end
   
   # queues up data to be sent to the client
   def send(data)
-    puts "Sending #{data} to #{self.socket}"
     @send_buffer << data << "\r\n"
     @game.watch_user_for_write self
   end
   
   
-  
   def disconnect(remote_disconnect: false )
-      
+    @game.get_users(:not_user => self, :logged_in => true).each{|user| user.send "#{self.name} disconnected"}
   end
   
   
   def handle_input(data)
-    
+    puts "in user::Handle_input"  
+    puts "input buffer starting at #{@input_buffer}"
     @input_buffer << data
+    puts "input buffer now at #{@input_buffer}"
 
-    @input_buffer.each_line{|line|
-
-      if line.end_with? $/
-        line.chomp!
-
-        if @processes.empty?
-          @game.handle_input self, line
-        else
-          process_complete = @processes[0].handle_input line
-          if process_complete
-            @processes.shift
-          end
-        end
+    position = 0;
+    while match = @input_buffer.match(/^(.*?)[\r\n]+/, position)
+      position = match.end(0)
+      line = match[1]
+      if @processes.empty?
+        @game.handle_input self, line
       else
-        @input_buffer = line
-        break
+        process_complete = @processes[0].handle_input line
+        if process_complete
+          @processes.shift
+        end
       end
-    }
+    end
+    # trim off the handled input so just the unhandled input remains
+    @input_buffer = @input_buffer[position..-1]
   end
-    
 end
+
+
 
 
 class Game
@@ -103,40 +105,37 @@ class Game
     @server_socket = TCPServer.open(hostname, port)
   end
   
-  def get_users(flags)
+  
+  def get_users(logged_in: false, not_user: nil)
     users = @socket_user_map.values
     
-    if flags[:logged_in]
+    if logged_in
       users.select!{|user|user.logged_in?}
     end
     
-    if flags[:not_user]
-      users.select!{|user|user != flags[:not_user]}
+    if not_user
+      users.select!{|user|user != not_user}
     end
     
     users
       
-  end
+  end    
   
+  
+  def watch_user_for_write(user)
+    @sockets_with_writes_pending[user.socket] = 1
+  end
+
 
   def handle_input(user, line)
     get_users(:logged_in => true, :not_user => user).each{|each_user| each_user.send line}
-  end
-
-
-  # Have to call this to send to a user, because this tracks whether a user's socket needs
-  #   to be selected for writing
-  def watch_user_for_write(user)
-    @sockets_with_writes_pending[user.socket] = 1;
   end
   
   
   def handle_accept(server_socket)
       client_socket = @server_socket.accept_nonblock
-      new_user = User.new(self, client_socket)
-      @socket_user_map[client_socket] = new_user    
-  rescue Exception => e
-    puts "Unknown accept error: ", e.inspect
+      new_user = User.new self, client_socket
+      @socket_user_map[client_socket] = new_user
   end
 
 
@@ -145,6 +144,7 @@ class Game
     user = @socket_user_map[socket];
     # read the data, but handle EOF if the client disconnected
     data = socket.read_nonblock 4096
+    puts "read #{data}"
     
     user.handle_input data
 
@@ -161,15 +161,18 @@ class Game
   def handle_write(socket)
     
     user = @socket_user_map[socket]
-    send_buffer = user.send_buffer
+    puts "about to send #{user.send_buffer}"
     
-    bytes_written = socket.write_nonblock(send_buffer)
+    bytes_written = socket.write_nonblock(user.send_buffer)
+    puts "wrote #{bytes_written}"
     
-    if bytes_written = send_buffer.size
+    if bytes_written == user.send_buffer.size
       @sockets_with_writes_pending.delete(socket)
     end
-    user.send_buffer = send_buffer[bytes_written..-1]
     
+    puts "new buffer is #{user.send_buffer[bytes_written..-1]}"
+    user.send_buffer = user.send_buffer[bytes_written..-1]
+    puts "buffer is now: #{user.send_buffer}" 
   end
   
 
@@ -193,6 +196,7 @@ class Game
       }
     end
   end
+  
 end
 
 

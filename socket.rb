@@ -158,6 +158,21 @@ class Game
   end
 
 
+  def handle_write(socket)
+    
+    user = @socket_user_map[socket]
+    send_buffer = user.send_buffer
+    
+    bytes_written = socket.write_nonblock(send_buffer)
+    
+    if bytes_written = send_buffer.size
+      @sockets_with_writes_pending.delete(socket)
+    end
+    user.send_buffer = send_buffer[bytes_written..-1]
+    
+  end
+  
+
   def go
     while true do
 
@@ -165,23 +180,15 @@ class Game
 
       # handle writes
       writes.each{|socket|
-        user = @socket_user_map[socket]
-        send_buffer = user.send_buffer
-        
-        bytes_written = socket.write_nonblock(send_buffer)
-        
-        if bytes_written = send_buffer.size
-          @sockets_with_writes_pending.delete(socket)
-        end
-        user.send_buffer = send_buffer[bytes_written..-1]
+        handle_write socket
       }
 
       reads.each{|socket|
 
         if socket === @server_socket
-          handle_accept(socket)
+          handle_accept socket
         else
-          handle_client_input(socket)
+          handle_client_input socket
         end
       }
     end

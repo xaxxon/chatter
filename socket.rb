@@ -53,6 +53,8 @@ class CommandProcessor
       end
     when 'look'
       @user.send @user.room.description @user
+    when 'shout'
+      @game.get_users(logged_in: true, not_user: @user).send "#{@user.name} shouts: #{remaining}"
     else
       @user.send "#{command} is not a known command"
     end

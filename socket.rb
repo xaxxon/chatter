@@ -1,5 +1,8 @@
 require 'socket'
 
+require './dungeon'
+
+
 
 class LoginProcess
   
@@ -11,12 +14,35 @@ class LoginProcess
   end
   
   def handle_input(data)
-    @game.get_users(:logged_in => true).each{|user| user.send "#{data} logged in"}
+    @game.get_users(:logged_in => true).send "#{data} logged in"
     @user.name = data
     @user.send "Welcome #{data}"
     return 1;
   end
+end
 
+
+# list of users as returned by get_users
+class UserList
+  
+  include Enumerable
+  
+  def initialize(user_list)
+    @user_list = user_list
+  end
+  
+  def each
+    @user_list.each{|user|
+      yield user
+    }
+  end
+  
+  def send(data)
+    @user_list.each{|user|
+      user.send data
+    }
+  end
+  
 end
 
 
@@ -58,7 +84,8 @@ class User
   
   
   def disconnect(remote_disconnect: false )
-    @game.get_users(:not_user => self, :logged_in => true).each{|user| user.send "#{self.name} disconnected"}
+    # tell the other users this user disconnected
+    @game.get_users(:not_user => self, :logged_in => true).send "#{self.name} disconnected"
   end
   
   
@@ -101,8 +128,16 @@ class Game
     
     hostname = ''
     port = 2000
-    
+
     @server_socket = TCPServer.open(hostname, port)
+
+
+    while true
+      @dungeon = Dungeon.new 10, 10
+      @dungeon.print
+      break if @dungeon.rooms[0][0].connected_room_count > 50
+    end
+
   end
   
   
@@ -117,7 +152,7 @@ class Game
       users.select!{|user|user != not_user}
     end
     
-    users
+    UserList.new users
       
   end    
   
@@ -128,7 +163,7 @@ class Game
 
 
   def handle_input(user, line)
-    get_users(:logged_in => true, :not_user => user).each{|each_user| each_user.send line}
+    get_users(:logged_in => true, :not_user => user).send line
   end
   
   
@@ -177,6 +212,9 @@ class Game
   
 
   def go
+    
+    puts "Game running.."
+    
     while true do
 
       reads, writes = IO.select(@socket_user_map.keys + [@server_socket], @sockets_with_writes_pending.keys);

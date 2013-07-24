@@ -16,7 +16,7 @@ class LoginProcessor
     @game.get_users(:logged_in => true).send "#{data} logged in"
     @user.name = data
     @user.send "Welcome #{data}"
-    @user.send @user.room.description
+    @user.send @user.room.description(@user)
     return 1
   end
 end
@@ -29,24 +29,35 @@ class CommandProcessor
   end
   
   def handle_input(data)
+    # if no command is present, default to saying the entire input
     command = 'say'
     remaining = data
+  
+    # check to see if there is a specific command
     if match = data.match(/^\.(\S+)\s*/)
         
       command = match[1] or "say"
       remaining = match.post_match
     end
-      
     
-    puts "Command #{command} remaining #{remaining}"
+    case command
+    when 'say'
+        @game.get_users(in_room: @user.room, not_user: @user).send "#{@user.name} says: #{remaining}\n"
+    when 'go'
+      if @user.room.connected? remaining.to_sym
+        @game.get_users(in_room: @user.room, not_user: self).send "#{@user.name} leaving to the #{remaining}"
+        @user.room = @user.room.connected_room remaining
+        @game.get_users(in_room: @user.room, not_user: self).send "#{@user.name} entered the room"
+      else
+        @user.send "#{remaining} is not an exit.  Exits are #{@user.room.connections.keys.join ", "}"
+      end
+    when 'look'
+      @user.send @user.room.description @user
+    else
+      @user.send "#{command} is not a known command"
+    end
     
     return false; # this never returns true
-  end
-  
-  def command(data)
-    
-
-    
   end
   
 end
@@ -80,8 +91,8 @@ end
 
 class User
 
-  attr_accessor :send_buffer
-  attr_reader :socket, :room, :game
+  attr_accessor :send_buffer, :room
+  attr_reader :socket, :game
   
   
   def initialize(game, socket, room)
@@ -167,7 +178,7 @@ class Game
     @server_socket = TCPServer.open(hostname, port)
 
     while true
-      @dungeon = Dungeon.new 10, 10
+      @dungeon = Dungeon.new self, 10, 10
       @dungeon.print
       break if @dungeon.rooms[0][0].connected_room_count > 50
     end
@@ -197,11 +208,6 @@ class Game
   
   def watch_user_for_write(user)
     @sockets_with_writes_pending[user.socket] = 1
-  end
-
-
-  def handle_input(user, line)
-    get_users(:logged_in => true, :not_user => user).send line
   end
   
   

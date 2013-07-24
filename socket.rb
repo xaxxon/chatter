@@ -3,11 +3,10 @@ require 'socket'
 require './dungeon'
 
 
-
-class LoginProcess
+class LoginProcessor
   
-  def initialize(game, user)
-    @game = game
+  def initialize(user)
+    @game = user.game
     @user = user
     
     user.send "What is your name: "
@@ -17,47 +16,82 @@ class LoginProcess
     @game.get_users(:logged_in => true).send "#{data} logged in"
     @user.name = data
     @user.send "Welcome #{data}"
-    return 1;
+    @user.send @user.room.description
+    return 1
   end
+end
+
+class CommandProcessor
+  
+  def initialize(user)
+    @game = user.game
+    @user = user
+  end
+  
+  def handle_input(data)
+    command = 'say'
+    remaining = data
+    if match = data.match(/^\.(\S+)\s*/)
+        
+      command = match[1] or "say"
+      remaining = match.post_match
+    end
+      
+    
+    puts "Command #{command} remaining #{remaining}"
+    
+    return false; # this never returns true
+  end
+  
+  def command(data)
+    
+
+    
+  end
+  
 end
 
 
 # list of users as returned by get_users
 class UserList
-  
+
   include Enumerable
-  
+
   def initialize(user_list)
     @user_list = user_list
   end
-  
+
+
   def each
     @user_list.each{|user|
       yield user
     }
   end
-  
+
+
   def send(data)
     @user_list.each{|user|
       user.send data
     }
   end
-  
+
 end
 
 
 class User
-  
+
   attr_accessor :send_buffer
-  attr_reader :socket
+  attr_reader :socket, :room, :game
   
-  def initialize(game, socket)
+  
+  def initialize(game, socket, room)
     @game = game
     @socket = socket
     @input_buffer = ""
     @name = nil
     @send_buffer = ""
-    @processes = [LoginProcess.new(@game, self)]
+    @processors = [LoginProcessor.new(self), CommandProcessor.new(self)]
+    @room = room
   end
     
   def name=(name)
@@ -99,12 +133,13 @@ class User
     while match = @input_buffer.match(/^(.*?)[\r\n]+/, position)
       position = match.end(0)
       line = match[1]
-      if @processes.empty?
-        @game.handle_input self, line
+      if @processors.empty?
+        @game.get_users(in_room: self.room).send line
       else
-        process_complete = @processes[0].handle_input line
-        if process_complete
-          @processes.shift
+        processor_complete = @processors[0].handle_input line
+        if processor_complete
+          puts @processors.shift.inspect
+          puts "processors remaining #{@processors.size}"
         end
       end
     end
@@ -131,7 +166,6 @@ class Game
 
     @server_socket = TCPServer.open(hostname, port)
 
-
     while true
       @dungeon = Dungeon.new 10, 10
       @dungeon.print
@@ -141,11 +175,15 @@ class Game
   end
   
   
-  def get_users(logged_in: false, not_user: nil)
+  def get_users(logged_in: nil, not_user: nil, in_room: nil)
     users = @socket_user_map.values
     
-    if logged_in
-      users.select!{|user|user.logged_in?}
+    if in_room
+      users.select!{|user|user.room == in_room}
+    end
+    
+    if logged_in != nil
+      users.select!{|user|user.logged_in? == logged_in}
     end
     
     if not_user
@@ -154,7 +192,7 @@ class Game
     
     UserList.new users
       
-  end    
+  end
   
   
   def watch_user_for_write(user)
@@ -169,7 +207,7 @@ class Game
   
   def handle_accept(server_socket)
       client_socket = @server_socket.accept_nonblock
-      new_user = User.new self, client_socket
+      new_user = User.new self, client_socket, @dungeon.rooms[0][0]
       @socket_user_map[client_socket] = new_user
   end
 

@@ -53,7 +53,7 @@ class Room
       else
         other_users_in_room.join(", ") + (if other_users_in_room.size == 1 then " is " else " are " end) + "in the room with you"
       end
-    
+  
     "You are in a room.\nThere are exits to the: #{@connections.keys.join ","}\n#{other_users_text}"
     
   end

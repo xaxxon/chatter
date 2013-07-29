@@ -3,88 +3,9 @@ require 'socket'
 
 require './dungeon'
 require './user'
+require './combat'
 
-# AsynchronousProcessor must implement
-#   initialize(game) - takes a game object for optional use later
-#   run(time) - actual processing work goes here
-#   complete? - is this processor done?  if true, object will be removed
-#   time_til_next_run - how many seconds from now (float) should this processor be called next?
-
-# Base class for asynchronous processor
-# If you inherit from this, implement _run(time)
-#   and override @period_seconds to be called that often (must override after calling super for base class constructor)
-class AsynchronousProcessorBase
-  
-  attr_reader :game
-
-  def initialize(game)
-    @game = game
-    
-    # override this to control how often the processor is called
-    @period_seconds = 1
-    
-    # the time the main code ran last
-    @previous_execution_time = Time.now
-    
-    # the time the system last called #run regardless
-    #   of whether it chose to run or not
-    @most_recent_time_called = nil
-    
-  end
-
-  # Calls _run if the correct amount of time has passed since the previous call
-  def run(time)
-    @most_recent_time_called = time
-    if time > @previous_execution_time + @period_seconds
-      @previous_execution_time = time
-      self._run time
-    end
-  end
-
-
-  # default to never completing unless overwritten in base class
-  def complete?
-    false
-  end
-  
-
-  # compute how much time is remaining until the next time this processor should be called
-  def time_til_next_run
-    @previous_execution_time - @most_recent_time_called + @period_seconds
-  end
-  
-end
-
-
-
-class DoOtherStuff < AsynchronousProcessorBase
-  def initialize(game)
-    super game
-    @period_seconds = 3
-  end
-  
-  def _run(time)
-    self.game.get_users(logged_in: true).send "This is your #{@period_seconds}-second update #{time}"
-  end
-  
-end
-
-
-
-class DoStuff < AsynchronousProcessorBase
-
-  def initialize(game)
-    super game
-    @period_seconds = 7
-  end
-
-
-  def _run(time)
-    self.game.get_users(logged_in: true).send "This is your #{@period_seconds}-second update #{time}"
-  end
-  
-end
-
+require './asynchronous_processor'
 
 class LoginProcessor
 
@@ -141,6 +62,23 @@ class CommandProcessor
       @user.send @user.room.description @user
     when 'shout'
       @game.get_users(logged_in: true, not_user: @user).send "#{@user.name} shouts: #{remaining}"
+    when 'attack'
+      
+      room = @user.room
+      
+      # attack the monsters in the current room for now
+      # verify there is a monster
+      if room.entities.select(&:is_monster?).empty?
+        @user.send "Nothing to attack here"
+      else
+      
+        # check to see if there is already combat in the room
+        if combat = room.combat
+          combat.add_entity @user, room.entities.select(&:is_monster?)[0]
+        else
+          room.combat = Combat.new @game, room, [@user, room.entities.select(&:is_monster?)[0]], room.entities.select(&:is_monster?).map{|monster| [monster, @user]}
+        end
+      end
     else
       @user.send "#{command} is not a known command"
     end
@@ -153,6 +91,19 @@ end
 
 
 class Game
+  
+  def inspect(*stuff)
+    "Game: #{@socket_user_map.size} users connected"
+  end
+  
+  def add_asynchronous_processors(*stuff)
+    if stuff.class == Array
+      @asynchronous_processors.concat stuff
+    else
+      @asynchronous_processors << stuff
+    end
+  end
+  
   
   def initialize
     
@@ -169,12 +120,13 @@ class Game
 
     while true
       @dungeon = Dungeon.new self, 10, 10
-      @dungeon.print
+      #@dungeon.print
       break if @dungeon.rooms[0][0].connected_room_count > 50
     end
 
     # Processors to run periodically, not based on user input
-    @asynchronous_processors = [DoStuff.new(self), DoOtherStuff.new(self)]
+    @asynchronous_processors = []
+    #@asynchronous_processors = [DoStuff.new(self), DoOtherStuff.new(self)]
     @wakeup_time = 0
   end
   
@@ -276,11 +228,10 @@ class Game
 
     while true do
 
-
       async_start_time = Time.now # the time to send to all the async proc. run methods
       puts "Running #{@asynchronous_processors.size} async processors"
       self.handle_asynchronous_processors async_start_time
-      puts "Done running async processors, next wakeup in #{@wakeup_time} seconds"
+      puts "Done running async processors, next wakeup in #{@wakeup_time or "<not scheduled>"} seconds"
 
       # returns nil on timeout
       if @asynchronous_processors.empty? or @wakeup_time > 0
@@ -290,8 +241,6 @@ class Game
       else
         puts "Skipping select because async needs to run now"
       end
-      
-      select_return_time = Time.now
       
       if reads.nil?
         puts "Select timed out"

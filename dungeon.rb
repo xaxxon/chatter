@@ -1,14 +1,37 @@
+require './monster'
+
 class Room
   
-  attr_reader :connections
+  attr_reader :connections, :dungeon
   
   def initialize(dungeon, x, y)
     @connections = {}
     @dungeon = dungeon
     @x = x
     @y = y
+    @entities = {Goblin.new(self) => nil}
+    @combat = nil
   end
   
+  def entities
+    @entities.keys
+  end
+  
+  def combat
+    return @combat
+  end
+  
+  def combat=(combat)
+    self.dungeon.game.add_asynchronous_processors combat
+  end
+  
+  def add_entity(entity)
+    @entities[entity] = 1
+  end
+  
+  def remove_entity(entity)
+    @entity.delete entity
+  end
   
   def inspect(*thing)
     "Room: #{self} '#{@x}' '#{@y}' has connections to the: [#{@connections.keys.map{|direction|direction.to_s}.join ", "}]"

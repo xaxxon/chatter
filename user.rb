@@ -1,4 +1,5 @@
 
+require './entity'
 
 # list of users as returned by get_users
 class UserList
@@ -26,13 +27,27 @@ class UserList
 end
 
 
-class User
+class User < Entity
 
   attr_accessor :send_buffer, :room
-  attr_reader :socket, :game
+  attr_reader :socket, :game, :weapon
   
+    
+  def hp=(hp)
+    puts "Users don't take damage yet"
+    @hp=@max_hp
+  end
+  
+  def is_monster?
+    return false
+  end
+  
+  def inspect(*thing)
+    "User: #{self} #{@name}"
+  end
   
   def initialize(game, socket, room)
+    super(room, 40, Sword.new, "unnamed")
     @game = game
     @socket = socket
     @input_buffer = ""
@@ -41,22 +56,22 @@ class User
     @processors = [LoginProcessor.new(self), CommandProcessor.new(self)]
     @room = room
   end
-    
+
   def name=(name)
     raise "Cannot change name" if @name != nil
     @name = name
   end
-  
-  
+
+
   def name
     return @name
   end
-  
-  
+
+
   def logged_in?
     @name != nil
   end
-  
+
   
   # queues up data to be sent to the client
   def send(data)
@@ -69,8 +84,8 @@ class User
     # tell the other users this user disconnected
     @game.get_users(:not_user => self, :logged_in => true).send "#{self.name} disconnected"
   end
-  
-  
+
+
   def handle_input(data)
     puts "in user::Handle_input"  
     puts "input buffer starting at #{@input_buffer}"

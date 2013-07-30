@@ -22,7 +22,9 @@ class Room
   end
   
   def combat=(combat)
+    puts "About to call add_async"
     self.dungeon.game.add_asynchronous_processors combat
+    puts "Done calling it"
   end
   
   def add_entity(entity)
@@ -30,7 +32,7 @@ class Room
   end
   
   def remove_entity(entity)
-    @entity.delete entity
+    @entities.delete entity
   end
   
   def inspect(*thing)
@@ -68,14 +70,28 @@ class Room
   end
    
    
+  def monsters
+    self.entities.select(&:monster?)
+  end
+
+  # send a message to all logged-in users in the room
+  # takes all the same parameters as get_users, but always sends in_room: self
+  def send(message, **params)
+    @dungeon.game.get_users(in_room: self, logged_in: true, **params).send message
+  end
+  
+   
   def description(user)
     other_users_in_room = @dungeon.game.get_users(in_room: self, not_user: user).map{|u|u.name}
     other_users_text =
       if other_users_in_room.empty?
-        "You are alone"
+        "No other players are present\n"
       else
-        other_users_in_room.join(", ") + (if other_users_in_room.size == 1 then " is " else " are " end) + "in the room with you"
+        other_users_in_room.join(", ") + (if other_users_in_room.size == 1 then " is " else " are " end) + "in the room with you\n"
       end
+      
+    self.monsters.each{|monster| other_users_text += "#{monster.name} the #{monster.type}\n"}
+    
   
     "You are in a room.\nThere are exits to the: #{@connections.keys.join ","}\n#{other_users_text}"
     

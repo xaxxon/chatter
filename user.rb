@@ -29,26 +29,12 @@ end
 
 class User < Entity
 
-  attr_accessor :send_buffer, :room
-  attr_reader :socket, :game, :weapon
+  attr_accessor :send_buffer
+  attr_reader :socket, :weapon
   
     
-  def hp=(hp)
-    puts "Users don't take damage yet"
-    @hp=@max_hp
-  end
-  
-  def is_monster?
-    return false
-  end
-  
-  def inspect(*thing)
-    "User: #{self} #{@name}"
-  end
-  
   def initialize(game, socket, room)
-    super(room, 40, Sword.new, "unnamed")
-    @game = game
+    super(game, room, 40, Sword.new, "unnamed")
     @socket = socket
     @input_buffer = ""
     @name = nil
@@ -56,6 +42,20 @@ class User < Entity
     @processors = [LoginProcessor.new(self), CommandProcessor.new(self)]
     @room = room
   end
+    
+  def hp=(hp)
+    puts "Users don't take damage yet"
+    @hp=@max_hp
+  end
+  
+  def monster?
+    return false
+  end
+  
+  def inspect(*thing)
+    "User: #{self} #{@name}"
+  end
+  
 
   def name=(name)
     raise "Cannot change name" if @name != nil
@@ -72,17 +72,32 @@ class User < Entity
     @name != nil
   end
 
-  
+
   # queues up data to be sent to the client
   def send(data)
     @send_buffer << data << "\r\n"
     @game.watch_user_for_write self
   end
-  
-  
+
+
   def disconnect(remote_disconnect: false )
     # tell the other users this user disconnected
     @game.get_users(:not_user => self, :logged_in => true).send "#{self.name} disconnected"
+  end
+
+
+  def update_status
+    if self.dead?
+      
+      @combat.remove_entity self
+      
+      self.room.send "#{self.name} is dead"
+      self.room.send "#{self.name} dematerializes from the room"      
+      
+      self.room = @game.starting_room
+      self.room.send "#{self.name} materializes into the room"
+      
+    end
   end
 
 

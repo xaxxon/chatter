@@ -8,8 +8,9 @@ require './names'
 class Goblin < Entity
   
   def initialize(room)
-    super room, 40, Dagger.new, Names.instance.random
+    super room.dungeon.game, room, 40, Dagger.new, Names.instance.random
   end
+  
   
 end
 

@@ -24,6 +24,8 @@ class AsynchronousProcessorBase
     #   of whether it chose to run or not
     @most_recent_time_called = nil
     
+    @complete = false
+    
   end
 
   # Calls _run if the correct amount of time has passed since the previous call
@@ -32,14 +34,14 @@ class AsynchronousProcessorBase
     @most_recent_time_called = time
     if time > @previous_execution_time + @period_seconds
       @previous_execution_time += @period_seconds # not the ACTUAL time called, but the time it SHOULD have been called otherwise we'll always lag
-      self._run
+      @complete = self._run
     end
   end
 
 
   # default to never completing unless overwritten in base class
   def complete?
-    false
+    @complete
   end
   
 

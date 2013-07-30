@@ -7,6 +7,17 @@ require './combat'
 
 require './asynchronous_processor'
 
+
+module Kernel
+  def print_stacktrace
+    raise
+  rescue
+      puts $!.backtrace[1..-1].join("\n")
+  end
+end
+
+
+
 class LoginProcessor
 
   def initialize(user)
@@ -49,7 +60,7 @@ class CommandProcessor
   
     case command
     when 'say'
-        @game.get_users(in_room: @user.room, not_user: @user).send "#{@user.name} says: #{remaining}\n"
+        @user.room.send "#{@user.name} says: #{remaining}\n", not_user: @user
     when 'go'
       if @user.room.connected? remaining.to_sym
         @game.get_users(in_room: @user.room, not_user: self).send "#{@user.name} leaving to the #{remaining}"
@@ -64,11 +75,13 @@ class CommandProcessor
       @game.get_users(logged_in: true, not_user: @user).send "#{@user.name} shouts: #{remaining}"
     when 'attack'
       
+      puts "Found attack command"
+      
       room = @user.room
       
       # attack the monsters in the current room for now
       # verify there is a monster
-      if room.entities.select(&:is_monster?).empty?
+      if room.entities.select(&:monster?).empty?
         @user.send "Nothing to attack here"
       else
       
@@ -76,7 +89,7 @@ class CommandProcessor
         if combat = room.combat
           combat.add_entity @user, room.entities.select(&:is_monster?)[0]
         else
-          room.combat = Combat.new @game, room, [@user, room.entities.select(&:is_monster?)[0]], room.entities.select(&:is_monster?).map{|monster| [monster, @user]}
+          room.combat = Combat.new @game, room, [@user, room.entities.select(&:monster?)[0]], room.entities.select(&:monster?).map{|monster| [monster, @user]}
         end
       end
     else
@@ -97,11 +110,10 @@ class Game
   end
   
   def add_asynchronous_processors(*stuff)
-    if stuff.class == Array
-      @asynchronous_processors.concat stuff
-    else
-      @asynchronous_processors << stuff
-    end
+    Kernel.print_stacktrace
+    puts "going from #{@asynchronous_processors.size}"  
+    @asynchronous_processors.concat [stuff].flatten
+    puts "to #{@asynchronous_processors.size}"
   end
   
   
@@ -131,9 +143,12 @@ class Game
   end
   
   
-  def get_users(logged_in: nil, not_user: nil, in_room: nil)
-    users = @socket_user_map.values
-    
+  def get_users(**params)
+    Game.filter_users @socket_user_map.values, **params
+  end
+  
+  def self.filter_users(users, logged_in: nil, not_user: nil, in_room: nil)
+        
     if in_room
       users.select!{|user|user.room == in_room}
     end
@@ -156,9 +171,13 @@ class Game
   end
   
   
+  def starting_room
+    @dungeon.rooms[0][0]
+  end
+  
   def handle_accept(server_socket)
       client_socket = @server_socket.accept_nonblock
-      new_user = User.new self, client_socket, @dungeon.rooms[0][0]
+      new_user = User.new self, client_socket, self.starting_room
       @socket_user_map[client_socket] = new_user
   end
 

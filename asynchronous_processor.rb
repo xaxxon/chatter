@@ -4,33 +4,21 @@
 #   complete? - is this processor done?  if true, object will be removed
 #   time_til_next_run - how many seconds from now (float) should this processor be called next?
 
-# Base class for asynchronous processor
-# If you inherit from this, implement _run(time)
-#   and override @period_seconds to be called that often (must override after calling super for base class constructor)
-class AsynchronousProcessorBase
+# Includeable module for your asynchronous processor
+# If you include this, just implement _run(time)
+#   and redefine period_seconds to how often the function should be called
+module AsynchronousProcessorBase
   
-  attr_reader :game
-
-  def initialize(game)
-    @game = game
-    
-    # override this to control how often the processor is called
-    @period_seconds = 1
-    
-    # the time the main code ran last
-    @previous_execution_time = Time.now
-    
-    # the time the system last called #run regardless
-    #   of whether it chose to run or not
-    @most_recent_time_called = nil
-    
-    @complete = false
-    
+  
+  def period_seconds
+    @period_seconds or 1
   end
 
   # Calls _run if the correct amount of time has passed since the previous call
   #   passes in elapsed time since last call
   def run(time)
+    @most_recent_time_called ||= nil
+    @previous_execution_time ||= Time.now
     @most_recent_time_called = time
     if time > @previous_execution_time + @period_seconds
       @previous_execution_time += @period_seconds # not the ACTUAL time called, but the time it SHOULD have been called otherwise we'll always lag
@@ -41,7 +29,7 @@ class AsynchronousProcessorBase
 
   # default to never completing unless overwritten in base class
   def complete?
-    @complete
+    @complete or false
   end
   
 
@@ -49,16 +37,18 @@ class AsynchronousProcessorBase
   def time_til_next_run
     @previous_execution_time - @most_recent_time_called + @period_seconds
   end
-  
+
 end
 
 
 
-class DoOtherStuff < AsynchronousProcessorBase
+class DoOtherStuff
+  include AsynchronousProcessorBase
   def initialize(game)
-    super game
+    @game = game
     @period_seconds = 3
   end
+  
   
   def _run
     self.game.get_users(logged_in: true).send "This is your #{@period_seconds}-second update #{Time.now}"
@@ -68,10 +58,11 @@ end
 
 
 
-class DoStuff < AsynchronousProcessorBase
+class DoStuff
+  include AsynchronousProcessorBase
 
   def initialize(game)
-    super game
+    @game = game
     @period_seconds = 7
   end
 

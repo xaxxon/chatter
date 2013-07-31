@@ -2,12 +2,14 @@ require './user'
 
 require './asynchronous_processor'
 
-class Combat < AsynchronousProcessorBase
+class Combat 
   
-  attr_reader :room
+  include AsynchronousProcessorBase
+
+  attr_reader :room, :game
   
   def initialize(game, room, *entities)
-    super game
+    @game = game
 
     @room = room
     
@@ -18,13 +20,12 @@ class Combat < AsynchronousProcessorBase
   end
   
   
-  
-  
   def set_target(entity, target)
     @entities[entity] = target
     self.game.get_users(in_room: entity.room, not_user: entity).send "#{entity.name} set target to #{target.name}"
     entity.send "You are now targetting #{target.name}"
   end
+  
   
   def add_entity(entity, target)
     if @entities.key? entity
@@ -83,13 +84,16 @@ class Combat < AsynchronousProcessorBase
         
   end
   
+  
   def send(message, **params)
     Game.filter_users(self.users, **params).send message
   end
   
+  
   def monsters
     @entities.keys.select{|entity| entity.monster?}
   end
+  
   
   def users
     @entities.keys.reject{|entity| entity.monster?}

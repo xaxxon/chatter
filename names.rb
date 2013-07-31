@@ -11,7 +11,7 @@ class Names
 
   def initialize
     @names = []
-    File.foreach("names2.txt"){|line|
+    File.foreach("names.txt"){|line|
       @names << line
     }
   end

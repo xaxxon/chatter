@@ -2,6 +2,8 @@ require './monster'
 
 class Room
   
+  include EntityCollection
+  
   attr_reader :connections, :dungeon
   
   def initialize(dungeon, x, y)
@@ -11,10 +13,6 @@ class Room
     @y = y
     @entities = {Goblin.new(self) => nil}
     @combat = nil
-  end
-  
-  def entities
-    @entities.keys
   end
   
   def combat
@@ -74,15 +72,13 @@ class Room
     self.entities.select(&:monster?)
   end
 
-  # send a message to all logged-in users in the room
-  # takes all the same parameters as get_users, but always sends in_room: self
-  def send(message, **params)
-    @dungeon.game.get_users(in_room: self, logged_in: true, **params).send message
+  def all_entities
+    @dungeon.game.entities(in_room: self, logged_in: true)
   end
   
    
   def description(user)
-    other_users_in_room = @dungeon.game.get_users(in_room: self, not_user: user).map{|u|u.name}
+    other_users_in_room = @dungeon.game.entities(in_room: self, not_user: user).map{|u|u.name}
     other_users_text =
       if other_users_in_room.empty?
         "No other players are present\n"

@@ -29,18 +29,18 @@ class LoginProcessor
   
   
   def handle_input(data)
-    @game.get_users(:logged_in => true).send "#{data} logged in"
+    @game.send "#{data} logged in\n", :logged_in => true
     @user.name = data
-    @user.send "Welcome #{data}"
+    @user.send "Welcome #{data}\n"
     @user.send @user.room.description(@user)
     return 1
   end
-  
+
 end
 
 
 class CommandProcessor
-  
+
   def initialize(user)
     @game = user.game
     @user = user
@@ -60,7 +60,8 @@ class CommandProcessor
   
     case command
     when 'say'
-        @user.room.send "#{@user.name} says: #{remaining}\n", not_user: @user
+      @user.send "You say: #{remaining}\n"
+      @user.room.send "#{@user.name} says: #{remaining}\n", not_user: @user
     when 'go'
       if @user.room.connected? remaining.to_sym
         @game.get_users(in_room: @user.room, not_user: self).send "#{@user.name} leaving to the #{remaining}"
@@ -105,6 +106,8 @@ end
 
 class Game
   
+  include EntityCollection
+  
   def inspect(*stuff)
     "Game: #{@socket_user_map.size} users connected"
   end
@@ -142,28 +145,12 @@ class Game
     @wakeup_time = 0
   end
   
-  
-  def get_users(**params)
-    Game.filter_users @socket_user_map.values, **params
+
+  def all_entities
+    @socket_user_map.values
   end
   
-  def self.filter_users(users, logged_in: nil, not_user: nil, in_room: nil)
-        
-    if in_room
-      users.select!{|user|user.room == in_room}
-    end
-    
-    if logged_in != nil
-      users.select!{|user|user.logged_in? == logged_in}
-    end
-    
-    if not_user
-      users.select!{|user|user != not_user}
-    end
-    
-    UserList.new users
-      
-  end
+  
   
   
   def watch_user_for_write(user)
@@ -174,6 +161,7 @@ class Game
   def starting_room
     @dungeon.rooms[0][0]
   end
+  
   
   def handle_accept(server_socket)
       client_socket = @server_socket.accept_nonblock

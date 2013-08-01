@@ -41,7 +41,6 @@ module AsynchronousProcessorBase
 end
 
 
-
 class DoOtherStuff
   include AsynchronousProcessorBase
   def initialize(game)

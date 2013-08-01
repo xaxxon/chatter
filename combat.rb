@@ -5,6 +5,7 @@ require './asynchronous_processor'
 class Combat 
   
   include AsynchronousProcessorBase
+  include EntityCollection
 
   attr_reader :room, :game
   
@@ -84,19 +85,18 @@ class Combat
         
   end
   
-  
-  def send(message, **params)
-    Game.filter_users(self.users, **params).send message
+  def all_entities
+    @entities.keys
   end
   
   
   def monsters
-    @entities.keys.select{|entity| entity.monster?}
+    all_entities().select{|entity| entity.monster?}
   end
   
   
   def users
-    @entities.keys.reject{|entity| entity.monster?}
+    all_entities.reject{|entity| entity.monster?}
   end
   
 end

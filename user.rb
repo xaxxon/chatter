@@ -75,7 +75,7 @@ class User < Entity
 
   # queues up data to be sent to the client
   def send(data)
-    @send_buffer << data << "\r\n"
+    @send_buffer << data
     @game.watch_user_for_write self
   end
 

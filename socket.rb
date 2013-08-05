@@ -203,7 +203,10 @@ class Game
   end
   
   
-  def handle_asynchronous_processors(time)
+  def handle_asynchronous_processors
+    
+    time = Time.now # the time to send to all the async proc. run methods
+    
     
     # Run all the processors and give them all the same timestamp so
     #   they make consistent decisions
@@ -240,8 +243,7 @@ class Game
   
   def run_once
 
-    async_start_time = Time.now # the time to send to all the async proc. run methods
-    self.handle_asynchronous_processors async_start_time
+    self.handle_asynchronous_processors 
 
 
     # returns nil on timeout

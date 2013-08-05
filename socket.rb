@@ -12,7 +12,7 @@ module Kernel
   def print_stacktrace
     raise
   rescue
-      puts $!.backtrace[1..-1].join("\n")
+    $!.backtrace[1..-1].join("\n")
   end
 end
 
@@ -75,9 +75,7 @@ class CommandProcessor
     when 'shout'
       @game.get_users(logged_in: true, not_user: @user).send "#{@user.name} shouts: #{remaining}"
     when 'attack'
-      
-      puts "Found attack command"
-      
+
       room = @user.room
       
       # attack the monsters in the current room for now
@@ -108,30 +106,27 @@ class Game
   
   include EntityCollection
   
+  attr_reader :server_socket
+  
   def inspect(*stuff)
     "Game: #{@socket_user_map.size} users connected"
   end
   
   def add_asynchronous_processors(*stuff)
-    Kernel.print_stacktrace
-    puts "going from #{@asynchronous_processors.size}"  
-    @asynchronous_processors.concat [stuff].flatten
-    puts "to #{@asynchronous_processors.size}"
+    @asynchronous_processors.concat stuff
   end
   
   
   def initialize
-    
+
+    # when set to true via game.done, game.go will exit before the next processing loop
+    @done = false
+ 
     # up-to-date list of sockets which have data pending to be written
     @sockets_with_writes_pending = {}
-    
+
     # fast lookup for user objects by socket
     @socket_user_map = {}
-    
-    hostname = ''
-    port = 2000
-
-    @server_socket = TCPServer.open(hostname, port)
 
     while true
       @dungeon = Dungeon.new self, 10, 10
@@ -144,15 +139,21 @@ class Game
     #@asynchronous_processors = [DoStuff.new(self), DoOtherStuff.new(self)]
     @wakeup_time = 0
   end
+
+  
+  def open_server_socket
+    hostname = ''
+    port = 2000
+    @server_socket = TCPServer.open(hostname, port)
+    @server_socket.setsockopt(Socket::SOL_SOCKET,Socket::SO_REUSEADDR, true)
+  end
   
 
   def all_entities
     @socket_user_map.values
   end
   
-  
-  
-  
+    
   def watch_user_for_write(user)
     @sockets_with_writes_pending[user.socket] = 1
   end
@@ -175,7 +176,6 @@ class Game
     user = @socket_user_map[socket];
     # read the data, but handle EOF if the client disconnected
     data = socket.read_nonblock 4096
-    puts "read #{data}"
     
     user.handle_input data
 
@@ -192,18 +192,14 @@ class Game
   def handle_write(socket)
     
     user = @socket_user_map[socket]
-    puts "about to send #{user.send_buffer}"
     
     bytes_written = socket.write_nonblock(user.send_buffer)
-    puts "wrote #{bytes_written}"
     
     if bytes_written == user.send_buffer.size
       @sockets_with_writes_pending.delete(socket)
     end
     
-    puts "new buffer is #{user.send_buffer[bytes_written..-1]}"
     user.send_buffer = user.send_buffer[bytes_written..-1]
-    puts "buffer is now: #{user.send_buffer}" 
   end
   
   
@@ -217,7 +213,6 @@ class Game
     }.reject!(&:complete?)
 
     if @asynchronous_processors.empty?
-      puts "Setting wakeup time to nil"
       @wakeup_time = nil
     else
       # determine the time to run processors again
@@ -227,54 +222,63 @@ class Game
 
   end
   
+
+  def done?
+    @done
+  end
   
+  
+  def done
+    @done = true
+  end 
+
+
+  def select_sockets
+    IO.select(@socket_user_map.keys + [@server_socket], @sockets_with_writes_pending.keys, [], @wakeup_time)
+  end
+  
+  
+  def run_once
+
+    async_start_time = Time.now # the time to send to all the async proc. run methods
+    self.handle_asynchronous_processors async_start_time
+
+
+    # returns nil on timeout
+    reads = writes = nil
+    if @asynchronous_processors.empty? or @wakeup_time > 0
+      reads, writes = select_sockets
+    end
+
+    # handle writes if select didn't timeout
+    writes.each{|socket|
+      handle_write socket
+    } unless writes.nil?
+
+    
+    # handle reads if select didn't timeout
+    reads.each{|socket|
+
+      if socket === @server_socket
+        handle_accept socket
+      else
+        handle_client_input socket
+      end
+    } unless reads.nil?
+    
+  end
+
 
   def go
 
-    puts "Game running.."    
+    open_server_socket()
 
-    while true do
-
-      async_start_time = Time.now # the time to send to all the async proc. run methods
-      puts "Running #{@asynchronous_processors.size} async processors"
-      self.handle_asynchronous_processors async_start_time
-      puts "Done running async processors, next wakeup in #{@wakeup_time or "<not scheduled>"} seconds"
-
-      # returns nil on timeout
-      if @asynchronous_processors.empty? or @wakeup_time > 0
-        puts "About to select #{Time.now}"
-        reads, writes = IO.select(@socket_user_map.keys + [@server_socket], @sockets_with_writes_pending.keys, [], @wakeup_time)
-        puts "Done selecting #{Time.now}"
-      else
-        puts "Skipping select because async needs to run now"
-      end
-      
-      if reads.nil?
-        puts "Select timed out"
-      else
-        puts "Select found #{reads.size} reads and #{writes.size} writes"
-      end
-      
-
-      # handle writes if select didn't timeout
-      writes.each{|socket|
-        handle_write socket
-      } if writes
-
-      # handle reads if select didn't timeout
-      reads.each{|socket|
-
-        if socket === @server_socket
-          handle_accept socket
-        else
-          handle_client_input socket
-        end
-      } if reads
-      
+    until done? do
+      self.run_once
     end
+    
+    true
+    
   end
   
 end
-
-
-Game.new.go

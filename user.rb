@@ -1,31 +1,6 @@
 
 require './entity'
 
-# list of users as returned by get_users
-class UserList
-
-  include Enumerable
-
-  def initialize(user_list)
-    @user_list = user_list
-  end
-
-
-  def each
-    @user_list.each{|user|
-      yield user
-    }
-  end
-
-
-  def send(data)
-    @user_list.each{|user|
-      user.send data
-    }
-  end
-
-end
-
 
 class User < Entity
 
